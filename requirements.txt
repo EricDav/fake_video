@@ -1,0 +1,6 @@
+mediapipe==0.10.21
+opencv-python==4.10.0.84
+numpy==1.26.4
+pyvirtualcam==0.11.1
+PyQt5==5.15.11
+pyinstaller==6.10.0
