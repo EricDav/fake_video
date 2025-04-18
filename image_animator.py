@@ -4,12 +4,17 @@ from facial_tracker import FacialTracker  # Add this import
 
 class ImageAnimator:
     def __init__(self, image_path):
+        self.base_image = cv2.imread(image_path)
         self.image = cv2.imread(image_path)
         if self.image is None:
             raise ValueError("Failed to load image")
         self.h, self.w = self.image.shape[:2]
         self.neutral_landmarks = None
         self.tracker = FacialTracker()
+
+    def get_base_image(self):
+        """Return the base image without animation."""
+        return self.base_image.copy() if self.base_image is not None else None
 
     def set_neutral_landmarks(self):
         """Process the static image to get its landmarks (neutral state)."""
