@@ -1,5 +1,6 @@
 import sys
 import cv2
+import numpy as np
 from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QFileDialog, QLabel, QVBoxLayout, QWidget
 from PyQt5.QtCore import QTimer
 from facial_tracker import FacialTracker
@@ -19,6 +20,9 @@ class VideoCallAnimator(QMainWindow):
         self.cap = cv2.VideoCapture(0)
         self.image_path = None
         self.running = False
+        self.last_landmarks = None
+        self.movement_threshold = 0.005  # Adjust based on testing
+        self.is_moving = False
 
         # GUI setup
         self.central_widget = QWidget()
@@ -59,7 +63,7 @@ class VideoCallAnimator(QMainWindow):
         if not self.running:
             try:
                 self.virtual_cam.start()
-                self.timer.start(33)  # ~30fps
+                self.timer.start(50)  # ~20fps
                 self.running = True
                 self.start_btn.setText("Stop Virtual Camera")
                 self.upload_btn.setEnabled(False)
@@ -77,17 +81,51 @@ class VideoCallAnimator(QMainWindow):
         """Process webcam frame and send to virtual camera."""
         ret, frame = self.cap.read()
         if not ret:
+            self.status_label.setText("Camera error")
             return
 
         landmarks = self.tracker.get_landmarks(frame)
-        if self.animator:
-            output_frame = self.animator.animate(landmarks)
+        output_frame = frame
+
+        if landmarks:
+            # Extract key landmarks (e.g., mouth) for movement detection
+            mouth_top = landmarks[13] if len(landmarks) > 13 else None
+            mouth_bottom = landmarks[14] if len(landmarks) > 14 else None
+            if mouth_top and mouth_bottom:
+                current_landmarks = np.array([mouth_top[0], mouth_top[1], mouth_bottom[0], mouth_bottom[1]])
+                mouth_open = abs(mouth_top[1] - mouth_bottom[1])
+                print(f"Mouth openness: {mouth_open}")
+
+                # Detect movement
+                if self.last_landmarks is not None:
+                    movement = np.linalg.norm(current_landmarks - self.last_landmarks)
+                    self.is_moving = movement > self.movement_threshold
+                    print(f"Movement: {movement}, Is moving: {self.is_moving}")
+                self.last_landmarks = current_landmarks
+
+            # Animate only if moving
+            if self.animator:
+                if self.is_moving:
+                    output_frame = self.animator.animate(landmarks)
+                    if output_frame is None:
+                        print("Animation failed: output_frame is None")
+                        output_frame = frame
+                else:
+                    # Idle state: Use the base image without animation
+                    output_frame = self.animator.get_base_image()  # Assume ImageAnimator has a method to return the base image
+                    if output_frame is None:
+                        print("Base image not available")
+                        output_frame = frame
         else:
-            output_frame = frame
+            print("No landmarks detected")
+            if self.animator:
+                output_frame = self.animator.get_base_image()  # Idle state
+                if output_frame is None:
+                    output_frame = frame
 
         self.virtual_cam.send_frame(output_frame)
 
-        # Preview (optional, for debugging)
+        # Preview
         preview = cv2.resize(output_frame, (320, 240))
         cv2.imshow("Preview", preview)
         if cv2.waitKey(1) & 0xFF == ord('q'):
